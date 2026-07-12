@@ -31,4 +31,18 @@ export async function ensureSchema(db: Client = getDb()): Promise<void> {
   for (const statement of statements) {
     await db.execute(statement);
   }
+
+  await ensureMigrations(db);
+}
+
+/** Idempotent column adds for DBs created before schema updates. */
+export async function ensureMigrations(db: Client = getDb()): Promise<void> {
+  try {
+    await db.execute(
+      "ALTER TABLE sessions ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0"
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/duplicate column/i.test(msg)) throw err;
+  }
 }

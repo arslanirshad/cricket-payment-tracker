@@ -1,13 +1,16 @@
-import { getDb } from "@/lib/db";
+import { ensureMigrations, getDb } from "@/lib/db";
 import type { Due, GridData, Player, Session } from "@/lib/types";
 
-export async function getGridData(): Promise<GridData> {
+export async function getGridData(includeHidden = false): Promise<GridData> {
   const db = getDb();
+  await ensureMigrations(db);
 
   const [playersRes, sessionsRes, duesRes] = await Promise.all([
     db.execute("SELECT id, name, active, created_at FROM players ORDER BY name COLLATE NOCASE"),
     db.execute(
-      "SELECT id, play_date, total_amount, created_at FROM sessions ORDER BY play_date ASC, id ASC"
+      includeHidden
+        ? "SELECT id, play_date, total_amount, is_hidden, created_at FROM sessions ORDER BY play_date ASC, id ASC"
+        : "SELECT id, play_date, total_amount, is_hidden, created_at FROM sessions WHERE is_hidden = 0 ORDER BY play_date ASC, id ASC"
     ),
     db.execute("SELECT id, session_id, player_id, amount, is_paid FROM dues"),
   ]);
@@ -23,8 +26,11 @@ export async function getGridData(): Promise<GridData> {
     id: Number(r.id),
     play_date: String(r.play_date),
     total_amount: Number(r.total_amount),
+    is_hidden: Number(r.is_hidden ?? 0),
     created_at: String(r.created_at),
   })) as Session[];
+
+  const sessionIds = new Set(sessions.map((s) => s.id));
 
   const dues = duesRes.rows.map((r) => ({
     id: Number(r.id),
@@ -44,7 +50,7 @@ export async function getGridData(): Promise<GridData> {
   const visiblePlayers = players.filter((p) => {
     if (p.active === 1) return true;
     const list = duesByPlayer.get(p.id) ?? [];
-    return list.length > 0;
+    return list.some((d) => sessionIds.has(d.session_id));
   });
 
   const gridPlayers = visiblePlayers.map((player) => {
@@ -55,6 +61,7 @@ export async function getGridData(): Promise<GridData> {
     }
     let unpaidTotal = 0;
     for (const due of list) {
+      if (!sessionIds.has(due.session_id)) continue;
       cells[due.session_id] = {
         dueId: due.id,
         amount: due.amount,

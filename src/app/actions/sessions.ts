@@ -95,8 +95,85 @@ export async function markSessionAllUnpaid(sessionId: number): Promise<ActionRes
   }
 
   const db = getDb();
+  await db.batch(
+    [
+      {
+        sql: "UPDATE dues SET is_paid = 0 WHERE session_id = ?",
+        args: [sessionId],
+      },
+      {
+        // Unpaid dues must stay visible to visitors
+        sql: "UPDATE sessions SET is_hidden = 0 WHERE id = ?",
+        args: [sessionId],
+      },
+    ],
+    "write"
+  );
+
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function hideSession(sessionId: number): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  if (!Number.isFinite(sessionId) || sessionId <= 0) {
+    return { ok: false, error: "Invalid session." };
+  }
+
+  const db = getDb();
+  const existing = await db.execute({
+    sql: "SELECT id FROM sessions WHERE id = ?",
+    args: [sessionId],
+  });
+  if (!existing.rows[0]) {
+    return { ok: false, error: "Session not found." };
+  }
+
+  const unpaid = await db.execute({
+    sql: "SELECT COUNT(*) AS cnt FROM dues WHERE session_id = ? AND is_paid = 0",
+    args: [sessionId],
+  });
+  const unpaidCount = Number(unpaid.rows[0]?.cnt ?? 0);
+  if (unpaidCount > 0) {
+    return { ok: false, error: "Hide only when every due in the column is paid." };
+  }
+
+  const duesCheck = await db.execute({
+    sql: "SELECT COUNT(*) AS cnt FROM dues WHERE session_id = ?",
+    args: [sessionId],
+  });
+  if (Number(duesCheck.rows[0]?.cnt ?? 0) === 0) {
+    return { ok: false, error: "Nothing to hide — this column has no dues." };
+  }
+
   await db.execute({
-    sql: "UPDATE dues SET is_paid = 0 WHERE session_id = ?",
+    sql: "UPDATE sessions SET is_hidden = 1 WHERE id = ?",
+    args: [sessionId],
+  });
+
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function unhideSession(sessionId: number): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  if (!Number.isFinite(sessionId) || sessionId <= 0) {
+    return { ok: false, error: "Invalid session." };
+  }
+
+  const db = getDb();
+  await db.execute({
+    sql: "UPDATE sessions SET is_hidden = 0 WHERE id = ?",
     args: [sessionId],
   });
 

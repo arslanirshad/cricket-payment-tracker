@@ -9,6 +9,7 @@ export type Session = {
   id: number;
   play_date: string;
   total_amount: number;
+  is_hidden: number;
   created_at: string;
 };
 

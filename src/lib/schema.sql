@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   play_date TEXT NOT NULL,
   total_amount INTEGER NOT NULL,
+  is_hidden INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

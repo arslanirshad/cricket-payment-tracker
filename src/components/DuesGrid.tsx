@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { markSessionAllPaid, markSessionAllUnpaid, deleteSession } from "@/app/actions/sessions";
+import {
+  markSessionAllPaid,
+  markSessionAllUnpaid,
+  deleteSession,
+  hideSession,
+  unhideSession,
+} from "@/app/actions/sessions";
 import { toggleDuePaid } from "@/app/actions/dues";
 import { TextFilter } from "@/components/TextFilter";
 import type { GridData } from "@/lib/types";
@@ -51,6 +57,20 @@ export function DuesGrid({ data, isAdmin }: Props) {
     });
   }
 
+  function onHideSession(sessionId: number) {
+    if (!isAdmin) return;
+    startTransition(async () => {
+      await hideSession(sessionId);
+    });
+  }
+
+  function onUnhideSession(sessionId: number) {
+    if (!isAdmin) return;
+    startTransition(async () => {
+      await unhideSession(sessionId);
+    });
+  }
+
   function onDeleteSession(sessionId: number, label: string) {
     if (!isAdmin) return;
     const ok = window.confirm(
@@ -91,12 +111,20 @@ export function DuesGrid({ data, isAdmin }: Props) {
               </th>
               {sessions.map((session) => {
                 const allPaid = sessionAllPaid(session.id);
+                const hidden = session.is_hidden === 1;
                 return (
                   <th
                     key={session.id}
-                    className="sticky top-0 z-20 bg-[var(--header-bg)] px-2 py-2 text-center font-medium text-[var(--ink)] border-b border-[var(--border)] min-w-[7.5rem] whitespace-nowrap"
+                    className={`sticky top-0 z-20 bg-[var(--header-bg)] px-2 py-2 text-center font-medium text-[var(--ink)] border-b border-[var(--border)] min-w-[7.5rem] whitespace-nowrap ${
+                      hidden ? "opacity-60" : ""
+                    }`}
                   >
                     <div>{formatSessionHeader(session.play_date, session.total_amount)}</div>
+                    {hidden && (
+                      <div className="text-[10px] font-normal uppercase tracking-wide text-[var(--muted)]">
+                        Hidden from visitors
+                      </div>
+                    )}
                     {isAdmin && (
                       <div className="mt-1 flex flex-col items-center gap-0.5">
                         <button
@@ -111,6 +139,27 @@ export function DuesGrid({ data, isAdmin }: Props) {
                         >
                           {allPaid ? "Mark all unpaid" : "Mark all paid"}
                         </button>
+                        {hidden ? (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => onUnhideSession(session.id)}
+                            className="text-[10px] font-normal text-[var(--accent)] hover:underline disabled:opacity-50"
+                          >
+                            Show column
+                          </button>
+                        ) : (
+                          allPaid && (
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => onHideSession(session.id)}
+                              className="text-[10px] font-normal text-[var(--accent)] hover:underline disabled:opacity-50"
+                            >
+                              Hide from visitors
+                            </button>
+                          )
+                        )}
                         <button
                           type="button"
                           disabled={pending}

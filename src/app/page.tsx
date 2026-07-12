@@ -17,7 +17,7 @@ export default async function HomePage() {
   let loadError: string | null = null;
 
   try {
-    grid = await getGridData();
+    grid = await getGridData(isAdmin);
     if (isAdmin) {
       [activePlayers, allPlayers] = await Promise.all([
         getActivePlayers(),
