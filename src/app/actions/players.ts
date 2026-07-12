@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { parseOptionalPhone } from "@/lib/whatsapp";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -16,10 +17,13 @@ export async function createPlayer(formData: FormData): Promise<ActionResult> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { ok: false, error: "Name is required." };
 
+  const phoneResult = parseOptionalPhone(String(formData.get("phone") ?? ""));
+  if (!phoneResult.ok) return phoneResult;
+
   const db = getDb();
   await db.execute({
-    sql: "INSERT INTO players (name, active) VALUES (?, 1)",
-    args: [name],
+    sql: "INSERT INTO players (name, phone, active) VALUES (?, ?, 1)",
+    args: [name, phoneResult.phone],
   });
 
   revalidatePath("/");
@@ -60,7 +64,7 @@ export async function reactivatePlayer(playerId: number): Promise<ActionResult> 
   return { ok: true };
 }
 
-export async function renamePlayer(
+export async function updatePlayer(
   playerId: number,
   formData: FormData
 ): Promise<ActionResult> {
@@ -73,10 +77,13 @@ export async function renamePlayer(
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { ok: false, error: "Name is required." };
 
+  const phoneResult = parseOptionalPhone(String(formData.get("phone") ?? ""));
+  if (!phoneResult.ok) return phoneResult;
+
   const db = getDb();
   await db.execute({
-    sql: "UPDATE players SET name = ? WHERE id = ?",
-    args: [name, playerId],
+    sql: "UPDATE players SET name = ?, phone = ? WHERE id = ?",
+    args: [name, phoneResult.phone, playerId],
   });
 
   revalidatePath("/");

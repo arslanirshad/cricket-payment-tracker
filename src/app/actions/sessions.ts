@@ -3,10 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import type { WhatsAppNotify } from "@/lib/types";
 import { splitAmount } from "@/lib/utils";
+import {
+  buildDueWhatsAppMessage,
+  buildWhatsAppUrl,
+  phoneToWhatsAppDigits,
+  resolveAppUrl,
+} from "@/lib/whatsapp";
 import type { ActionResult } from "./players";
 
-export async function createSession(formData: FormData): Promise<ActionResult> {
+export type CreateSessionResult =
+  | { ok: true; notifies: WhatsAppNotify[] }
+  | { ok: false; error: string };
+
+export async function createSession(
+  formData: FormData
+): Promise<CreateSessionResult> {
   try {
     await requireAdmin();
   } catch {
@@ -38,11 +51,11 @@ export async function createSession(formData: FormData): Promise<ActionResult> {
 
   const db = getDb();
   const placeholders = playerIds.map(() => "?").join(", ");
-  const activeCheck = await db.execute({
-    sql: `SELECT id FROM players WHERE active = 1 AND id IN (${placeholders})`,
+  const playersRes = await db.execute({
+    sql: `SELECT id, name, phone FROM players WHERE active = 1 AND id IN (${placeholders})`,
     args: playerIds,
   });
-  if (activeCheck.rows.length !== playerIds.length) {
+  if (playersRes.rows.length !== playerIds.length) {
     return { ok: false, error: "All selected players must be active." };
   }
 
@@ -66,8 +79,35 @@ export async function createSession(formData: FormData): Promise<ActionResult> {
     "write"
   );
 
+  const appUrl = resolveAppUrl();
+  const notifies: WhatsAppNotify[] = [];
+  for (const row of playersRes.rows) {
+    const phoneRaw = row.phone == null ? "" : String(row.phone);
+    const digits = phoneToWhatsAppDigits(phoneRaw);
+    if (!digits) continue;
+    const name = String(row.name);
+    const text = buildDueWhatsAppMessage({
+      playerName: name,
+      playDate,
+      amount: share,
+      appUrl,
+    });
+    notifies.push({
+      playerId: Number(row.id),
+      name,
+      phoneDigits: digits,
+      amount: share,
+      playDate,
+      waUrl: buildWhatsAppUrl(digits, text),
+    });
+  }
+
+  notifies.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+
   revalidatePath("/");
-  return { ok: true };
+  return { ok: true, notifies };
 }
 
 export async function markSessionAllPaid(sessionId: number): Promise<ActionResult> {

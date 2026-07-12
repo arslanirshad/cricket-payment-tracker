@@ -1,8 +1,18 @@
 export type Player = {
   id: number;
   name: string;
+  phone: string | null;
   active: number;
   created_at: string;
+};
+
+export type WhatsAppNotify = {
+  playerId: number;
+  name: string;
+  phoneDigits: string;
+  amount: number;
+  playDate: string;
+  waUrl: string;
 };
 
 export type Session = {

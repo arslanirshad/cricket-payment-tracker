@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { createSession } from "@/app/actions/sessions";
 import { TextFilter } from "@/components/TextFilter";
-import type { Player } from "@/lib/types";
+import type { Player, WhatsAppNotify } from "@/lib/types";
 import { formatRs, splitAmount, todayISO } from "@/lib/utils";
 
 type Props = {
@@ -14,6 +14,7 @@ export function AddSessionForm({ activePlayers }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [notifies, setNotifies] = useState<WhatsAppNotify[] | null>(null);
   const [total, setTotal] = useState("");
   const [nameFilter, setNameFilter] = useState("");
   const [selected, setSelected] = useState<number[]>(() =>
@@ -50,6 +51,7 @@ export function AddSessionForm({ activePlayers }: Props) {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    setNotifies(null);
 
     const form = e.currentTarget;
     const playDate = String(new FormData(form).get("play_date") ?? "");
@@ -77,6 +79,7 @@ export function AddSessionForm({ activePlayers }: Props) {
         return;
       }
       setMessage("Payment session added.");
+      setNotifies(result.notifies);
       setTotal("");
       setNameFilter("");
       setSelected(activePlayers.map((p) => p.id));
@@ -93,100 +96,152 @@ export function AddSessionForm({ activePlayers }: Props) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="mb-1 block text-[var(--muted)]">Play date</span>
-          <input
-            type="date"
-            name="play_date"
-            defaultValue={todayISO()}
-            required
-            className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-[var(--ink)]"
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-[var(--muted)]">Total amount (Rs)</span>
-          <input
-            type="number"
-            name="total_amount"
-            min={1}
-            step={1}
-            required
-            value={total}
-            onChange={(e) => setTotal(e.target.value)}
-            className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-[var(--ink)]"
-          />
-        </label>
-      </div>
+    <div className="space-y-4">
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-[var(--muted)]">Play date</span>
+            <input
+              type="date"
+              name="play_date"
+              defaultValue={todayISO()}
+              required
+              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-[var(--ink)]"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-[var(--muted)]">Total amount (Rs)</span>
+            <input
+              type="number"
+              name="total_amount"
+              min={1}
+              step={1}
+              required
+              value={total}
+              onChange={(e) => setTotal(e.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-[var(--ink)]"
+            />
+          </label>
+        </div>
 
-      <fieldset>
-        <legend className="mb-2 text-sm text-[var(--muted)]">Players who played</legend>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-2 text-xs">
-            <button
-              type="button"
-              onClick={checkAll}
-              className="text-[var(--accent)] hover:underline"
-            >
-              Check all
-            </button>
-            <span className="text-[var(--border)]">|</span>
-            <button
-              type="button"
-              onClick={uncheckAll}
-              className="text-[var(--accent)] hover:underline"
-            >
-              Uncheck all
-            </button>
+        <fieldset>
+          <legend className="mb-2 text-sm text-[var(--muted)]">Players who played</legend>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={checkAll}
+                className="text-[var(--accent)] hover:underline"
+              >
+                Check all
+              </button>
+              <span className="text-[var(--border)]">|</span>
+              <button
+                type="button"
+                onClick={uncheckAll}
+                className="text-[var(--accent)] hover:underline"
+              >
+                Uncheck all
+              </button>
+            </div>
+            <TextFilter
+              id="session-player-filter"
+              value={nameFilter}
+              onChange={setNameFilter}
+              placeholder="Filter players…"
+              inputClassName="bg-white"
+            />
           </div>
-          <TextFilter
-            id="session-player-filter"
-            value={nameFilter}
-            onChange={setNameFilter}
-            placeholder="Filter players…"
-            inputClassName="bg-white"
-          />
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {visiblePlayers.map((p) => (
-            <label
-              key={p.id}
-              className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(p.id)}
-                onChange={() => togglePlayer(p.id)}
-              />
-              {p.name}
-            </label>
-          ))}
-          {visiblePlayers.length === 0 && (
-            <p className="text-sm text-[var(--muted)] sm:col-span-2">
-              No players match &quot;{nameFilter}&quot;.
+          <div className="grid gap-2 sm:grid-cols-2">
+            {visiblePlayers.map((p) => (
+              <label
+                key={p.id}
+                className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(p.id)}
+                  onChange={() => togglePlayer(p.id)}
+                />
+                <span className="flex-1">
+                  {p.name}
+                  {!p.phone && (
+                    <span className="ml-1 text-xs text-[var(--muted)]">(no phone)</span>
+                  )}
+                </span>
+              </label>
+            ))}
+            {visiblePlayers.length === 0 && (
+              <p className="text-sm text-[var(--muted)] sm:col-span-2">
+                No players match &quot;{nameFilter}&quot;.
+              </p>
+            )}
+          </div>
+        </fieldset>
+
+        {share !== null && (
+          <p className="text-sm text-[var(--muted)]">
+            Each selected player:{" "}
+            <span className="font-medium text-[var(--ink)]">Rs {share}</span> (ceil
+            split)
+          </p>
+        )}
+
+        {error && <p className="text-sm text-[var(--unpaid-fg)]">{error}</p>}
+        {message && <p className="text-sm text-[var(--paid-fg)]">{message}</p>}
+
+        <button
+          type="submit"
+          disabled={pending || selected.length === 0}
+          className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        >
+          {pending ? "Saving..." : "Add payment"}
+        </button>
+      </form>
+
+      {notifies !== null && (
+        <div className="rounded-lg border border-[var(--border)] bg-white p-4">
+          <h3 className="text-sm font-medium text-[var(--ink)]">Notify on WhatsApp</h3>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Opens WhatsApp with a pre-filled dues message. Tap Send in WhatsApp for each
+            player.
+          </p>
+          {notifies.length === 0 ? (
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              No players in this session have a phone number. Add phones under Players.
             </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-[var(--border)]">
+              {notifies.map((n) => (
+                <li
+                  key={n.playerId}
+                  className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                >
+                  <span>
+                    <span className="font-medium text-[var(--ink)]">{n.name}</span>
+                    <span className="ml-2 text-[var(--muted)]">{formatRs(n.amount)}</span>
+                  </span>
+                  <a
+                    href={n.waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                  >
+                    WhatsApp
+                  </a>
+                </li>
+              ))}
+            </ul>
           )}
+          <button
+            type="button"
+            onClick={() => setNotifies(null)}
+            className="mt-3 text-xs text-[var(--muted)] hover:underline"
+          >
+            Dismiss
+          </button>
         </div>
-      </fieldset>
-
-      {share !== null && (
-        <p className="text-sm text-[var(--muted)]">
-          Each selected player: <span className="font-medium text-[var(--ink)]">Rs {share}</span>{" "}
-          (ceil split)
-        </p>
       )}
-
-      {error && <p className="text-sm text-[var(--unpaid-fg)]">{error}</p>}
-      {message && <p className="text-sm text-[var(--paid-fg)]">{message}</p>}
-
-      <button
-        type="submit"
-        disabled={pending || selected.length === 0}
-        className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-      >
-        {pending ? "Saving..." : "Add payment"}
-      </button>
-    </form>
+    </div>
   );
 }

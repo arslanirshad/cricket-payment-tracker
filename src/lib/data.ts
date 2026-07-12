@@ -1,12 +1,25 @@
 import { ensureMigrations, getDb } from "@/lib/db";
 import type { Due, GridData, Player, Session } from "@/lib/types";
 
+function mapPlayerRow(r: Record<string, unknown>): Player {
+  const phoneRaw = r.phone;
+  return {
+    id: Number(r.id),
+    name: String(r.name),
+    phone: phoneRaw == null || phoneRaw === "" ? null : String(phoneRaw),
+    active: Number(r.active),
+    created_at: String(r.created_at),
+  };
+}
+
 export async function getGridData(includeHidden = false): Promise<GridData> {
   const db = getDb();
   await ensureMigrations(db);
 
   const [playersRes, sessionsRes, duesRes] = await Promise.all([
-    db.execute("SELECT id, name, active, created_at FROM players ORDER BY name COLLATE NOCASE"),
+    db.execute(
+      "SELECT id, name, phone, active, created_at FROM players ORDER BY name COLLATE NOCASE"
+    ),
     db.execute(
       includeHidden
         ? "SELECT id, play_date, total_amount, is_hidden, created_at FROM sessions ORDER BY play_date ASC, id ASC"
@@ -15,12 +28,9 @@ export async function getGridData(includeHidden = false): Promise<GridData> {
     db.execute("SELECT id, session_id, player_id, amount, is_paid FROM dues"),
   ]);
 
-  const players = playersRes.rows.map((r) => ({
-    id: Number(r.id),
-    name: String(r.name),
-    active: Number(r.active),
-    created_at: String(r.created_at),
-  })) as Player[];
+  const players = playersRes.rows.map((r) =>
+    mapPlayerRow(r as Record<string, unknown>)
+  );
 
   const sessions = sessionsRes.rows.map((r) => ({
     id: Number(r.id),
@@ -77,26 +87,18 @@ export async function getGridData(includeHidden = false): Promise<GridData> {
 
 export async function getActivePlayers(): Promise<Player[]> {
   const db = getDb();
+  await ensureMigrations(db);
   const res = await db.execute(
-    "SELECT id, name, active, created_at FROM players WHERE active = 1 ORDER BY name COLLATE NOCASE"
+    "SELECT id, name, phone, active, created_at FROM players WHERE active = 1 ORDER BY name COLLATE NOCASE"
   );
-  return res.rows.map((r) => ({
-    id: Number(r.id),
-    name: String(r.name),
-    active: Number(r.active),
-    created_at: String(r.created_at),
-  }));
+  return res.rows.map((r) => mapPlayerRow(r as Record<string, unknown>));
 }
 
 export async function getAllPlayers(): Promise<Player[]> {
   const db = getDb();
+  await ensureMigrations(db);
   const res = await db.execute(
-    "SELECT id, name, active, created_at FROM players ORDER BY active DESC, name COLLATE NOCASE"
+    "SELECT id, name, phone, active, created_at FROM players ORDER BY active DESC, name COLLATE NOCASE"
   );
-  return res.rows.map((r) => ({
-    id: Number(r.id),
-    name: String(r.name),
-    active: Number(r.active),
-    created_at: String(r.created_at),
-  }));
+  return res.rows.map((r) => mapPlayerRow(r as Record<string, unknown>));
 }

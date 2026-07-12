@@ -35,14 +35,23 @@ export async function ensureSchema(db: Client = getDb()): Promise<void> {
   await ensureMigrations(db);
 }
 
-/** Idempotent column adds for DBs created before schema updates. */
-export async function ensureMigrations(db: Client = getDb()): Promise<void> {
+async function addColumnIfMissing(
+  db: Client,
+  sql: string
+): Promise<void> {
   try {
-    await db.execute(
-      "ALTER TABLE sessions ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0"
-    );
+    await db.execute(sql);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!/duplicate column/i.test(msg)) throw err;
   }
+}
+
+/** Idempotent column adds for DBs created before schema updates. */
+export async function ensureMigrations(db: Client = getDb()): Promise<void> {
+  await addColumnIfMissing(
+    db,
+    "ALTER TABLE sessions ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0"
+  );
+  await addColumnIfMissing(db, "ALTER TABLE players ADD COLUMN phone TEXT");
 }

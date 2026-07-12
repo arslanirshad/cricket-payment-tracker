@@ -5,7 +5,7 @@ import {
   createPlayer,
   deactivatePlayer,
   reactivatePlayer,
-  renamePlayer,
+  updatePlayer,
 } from "@/app/actions/players";
 import type { Player } from "@/lib/types";
 
@@ -33,10 +33,10 @@ export function PlayersAdmin({ players }: Props) {
     });
   }
 
-  function onRename(playerId: number, formData: FormData) {
+  function onUpdate(playerId: number, formData: FormData) {
     setError(null);
     startTransition(async () => {
-      const result = await renamePlayer(playerId, formData);
+      const result = await updatePlayer(playerId, formData);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -66,7 +66,13 @@ export function PlayersAdmin({ players }: Props) {
           name="name"
           required
           placeholder="New player name"
-          className="min-w-[12rem] flex-1 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
+          className="min-w-[10rem] flex-1 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
+        />
+        <input
+          type="tel"
+          name="phone"
+          placeholder="Phone (+92…)"
+          className="min-w-[10rem] flex-1 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
         />
         <button
           type="submit"
@@ -91,13 +97,20 @@ export function PlayersAdmin({ players }: Props) {
             {editingId === p.id ? (
               <form
                 className="flex flex-1 flex-wrap gap-2"
-                action={(fd) => onRename(p.id, fd)}
+                action={(fd) => onUpdate(p.id, fd)}
               >
                 <input
                   name="name"
                   defaultValue={p.name}
                   required
-                  className="min-w-[10rem] flex-1 rounded border border-[var(--border)] px-2 py-1"
+                  className="min-w-[8rem] flex-1 rounded border border-[var(--border)] px-2 py-1"
+                />
+                <input
+                  name="phone"
+                  type="tel"
+                  defaultValue={p.phone ?? ""}
+                  placeholder="Phone (+92…)"
+                  className="min-w-[8rem] flex-1 rounded border border-[var(--border)] px-2 py-1"
                 />
                 <button type="submit" disabled={pending} className="text-[var(--accent)]">
                   Save
@@ -114,6 +127,11 @@ export function PlayersAdmin({ players }: Props) {
               <>
                 <div>
                   <span className="font-medium text-[var(--ink)]">{p.name}</span>
+                  {p.phone ? (
+                    <span className="ml-2 text-xs text-[var(--muted)]">{p.phone}</span>
+                  ) : (
+                    <span className="ml-2 text-xs text-[var(--muted)]">no phone</span>
+                  )}
                   {p.active !== 1 && (
                     <span className="ml-2 text-xs text-[var(--muted)]">inactive</span>
                   )}
@@ -124,7 +142,7 @@ export function PlayersAdmin({ players }: Props) {
                     className="text-[var(--accent)] hover:underline"
                     onClick={() => setEditingId(p.id)}
                   >
-                    Rename
+                    Edit
                   </button>
                   {p.active === 1 ? (
                     <button
