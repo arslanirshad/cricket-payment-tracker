@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import {
   markSessionAllPaid,
   markSessionAllUnpaid,
@@ -8,9 +8,9 @@ import {
   hideSession,
   unhideSession,
 } from "@/app/actions/sessions";
-import { toggleDuePaid } from "@/app/actions/dues";
+import { setCellAmount, toggleDuePaid } from "@/app/actions/dues";
 import { TextFilter } from "@/components/TextFilter";
-import type { GridData } from "@/lib/types";
+import type { DueCell, GridData } from "@/lib/types";
 import { formatRs, formatSessionHeader } from "@/lib/utils";
 
 type Props = {
@@ -18,9 +18,31 @@ type Props = {
   isAdmin: boolean;
 };
 
+type EditingCell = {
+  playerId: number;
+  sessionId: number;
+};
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.921-.922l.93-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.262a.25.25 0 0 0 0-.354l-1.086-1.086ZM9.75 4.811 3.802 10.76a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.25.25 0 0 0 .108-.064l5.948-5.949-1.44-1.439Z" />
+    </svg>
+  );
+}
+
 export function DuesGrid({ data, isAdmin }: Props) {
   const [pending, startTransition] = useTransition();
   const [playerFilter, setPlayerFilter] = useState("");
+  const [editing, setEditing] = useState<EditingCell | null>(null);
+  const [draft, setDraft] = useState("");
+  const skipBlurSaveRef = useRef(false);
   const { players, sessions } = data;
 
   const filteredPlayers = useMemo(() => {
@@ -37,9 +59,57 @@ export function DuesGrid({ data, isAdmin }: Props) {
   }
 
   function onToggle(dueId: number) {
-    if (!isAdmin) return;
+    if (!isAdmin || editing) return;
     startTransition(async () => {
       await toggleDuePaid(dueId);
+    });
+  }
+
+  function startEdit(
+    playerId: number,
+    sessionId: number,
+    cell: DueCell | null
+  ) {
+    if (!isAdmin) return;
+    skipBlurSaveRef.current = false;
+    setEditing({ playerId, sessionId });
+    setDraft(cell ? String(cell.amount) : "");
+  }
+
+  function cancelEdit() {
+    skipBlurSaveRef.current = true;
+    setEditing(null);
+    setDraft("");
+  }
+
+  function saveEdit() {
+    if (skipBlurSaveRef.current) {
+      skipBlurSaveRef.current = false;
+      return;
+    }
+    if (!editing) return;
+    const { playerId, sessionId } = editing;
+    const trimmed = draft.trim();
+
+    let amount: number | null;
+    if (trimmed === "") {
+      amount = null;
+    } else {
+      const n = Number(trimmed);
+      if (!Number.isInteger(n) || n <= 0) {
+        window.alert("Enter a positive whole number, or leave empty to clear.");
+        return;
+      }
+      amount = n;
+    }
+
+    setEditing(null);
+    setDraft("");
+    startTransition(async () => {
+      const result = await setCellAmount(sessionId, playerId, amount);
+      if (!result.ok) {
+        window.alert(result.error);
+      }
     });
   }
 
@@ -80,6 +150,89 @@ export function DuesGrid({ data, isAdmin }: Props) {
     startTransition(async () => {
       await deleteSession(sessionId);
     });
+  }
+
+  function renderAdminCell(
+    playerId: number,
+    sessionId: number,
+    cell: DueCell | null
+  ) {
+    const isEditing =
+      editing?.playerId === playerId && editing?.sessionId === sessionId;
+
+    if (isEditing) {
+      return (
+        <td
+          key={sessionId}
+          className="border-b border-[var(--border)] px-1 py-1 text-center"
+        >
+          <input
+            type="number"
+            min={1}
+            step={1}
+            autoFocus
+            value={draft}
+            disabled={pending}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            onBlur={() => saveEdit()}
+            aria-label="Edit amount"
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1.5 text-center text-sm font-medium tabular-nums text-[var(--ink)] outline-none focus:border-[var(--accent)]"
+          />
+        </td>
+      );
+    }
+
+    const paid = cell?.isPaid ?? false;
+
+    return (
+      <td
+        key={sessionId}
+        className="group/cell relative border-b border-[var(--border)] px-1 py-1 text-center"
+      >
+        <button
+          type="button"
+          disabled={pending}
+          onClick={(e) => {
+            e.stopPropagation();
+            startEdit(playerId, sessionId, cell);
+          }}
+          title="Edit amount"
+          aria-label="Edit amount"
+          className="absolute top-0.5 right-0.5 z-10 flex h-4 w-4 items-center justify-center rounded bg-[var(--surface)]/90 text-[var(--muted)] opacity-0 shadow-sm transition hover:text-[var(--accent)] group-hover/cell:opacity-100 focus-visible:opacity-100"
+        >
+          <PencilIcon className="h-3 w-3" />
+        </button>
+
+        {cell ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => onToggle(cell.dueId)}
+            title={paid ? "Mark unpaid" : "Mark paid"}
+            className={`w-full rounded-md px-2 py-1.5 font-medium tabular-nums transition disabled:opacity-50 ${
+              paid
+                ? "bg-[var(--paid-bg)] text-[var(--paid-fg)] hover:brightness-95"
+                : "bg-[var(--unpaid-bg)] text-[var(--unpaid-fg)] hover:brightness-95"
+            }`}
+          >
+            {formatRs(cell.amount)}
+          </button>
+        ) : (
+          <span className="inline-block w-full rounded-md px-2 py-1.5 text-[var(--muted)]">
+            —
+          </span>
+        )}
+      </td>
+    );
   }
 
   if (players.length === 0 && sessions.length === 0) {
@@ -196,6 +349,11 @@ export function DuesGrid({ data, isAdmin }: Props) {
                 </td>
                 {sessions.map((session) => {
                   const cell = player.cells[session.id];
+
+                  if (isAdmin) {
+                    return renderAdminCell(player.id, session.id, cell);
+                  }
+
                   if (!cell) {
                     return (
                       <td
@@ -206,37 +364,22 @@ export function DuesGrid({ data, isAdmin }: Props) {
                       </td>
                     );
                   }
+
                   const paid = cell.isPaid;
                   return (
                     <td
                       key={session.id}
                       className="border-b border-[var(--border)] px-1 py-1 text-center"
                     >
-                      {isAdmin ? (
-                        <button
-                          type="button"
-                          disabled={pending}
-                          onClick={() => onToggle(cell.dueId)}
-                          title={paid ? "Mark unpaid" : "Mark paid"}
-                          className={`w-full rounded-md px-2 py-1.5 font-medium tabular-nums transition disabled:opacity-50 ${
-                            paid
-                              ? "bg-[var(--paid-bg)] text-[var(--paid-fg)] hover:brightness-95"
-                              : "bg-[var(--unpaid-bg)] text-[var(--unpaid-fg)] hover:brightness-95"
-                          }`}
-                        >
-                          {formatRs(cell.amount)}
-                        </button>
-                      ) : (
-                        <span
-                          className={`inline-block w-full rounded-md px-2 py-1.5 font-medium tabular-nums ${
-                            paid
-                              ? "bg-[var(--paid-bg)] text-[var(--paid-fg)]"
-                              : "bg-[var(--unpaid-bg)] text-[var(--unpaid-fg)]"
-                          }`}
-                        >
-                          {formatRs(cell.amount)}
-                        </span>
-                      )}
+                      <span
+                        className={`inline-block w-full rounded-md px-2 py-1.5 font-medium tabular-nums ${
+                          paid
+                            ? "bg-[var(--paid-bg)] text-[var(--paid-fg)]"
+                            : "bg-[var(--unpaid-bg)] text-[var(--unpaid-fg)]"
+                        }`}
+                      >
+                        {formatRs(cell.amount)}
+                      </span>
                     </td>
                   );
                 })}

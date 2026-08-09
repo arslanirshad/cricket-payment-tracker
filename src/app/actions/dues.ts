@@ -73,3 +73,72 @@ export async function setDuePaid(
   revalidatePath("/");
   return { ok: true };
 }
+
+/** Upsert a player's due amount for a session, or clear (delete) when amount is null. */
+export async function setCellAmount(
+  sessionId: number,
+  playerId: number,
+  amount: number | null
+): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  if (
+    !Number.isInteger(sessionId) ||
+    sessionId <= 0 ||
+    !Number.isInteger(playerId) ||
+    playerId <= 0
+  ) {
+    return { ok: false, error: "Invalid cell." };
+  }
+
+  const db = getDb();
+
+  const session = await db.execute({
+    sql: "SELECT id FROM sessions WHERE id = ?",
+    args: [sessionId],
+  });
+  if (!session.rows[0]) return { ok: false, error: "Session not found." };
+
+  const player = await db.execute({
+    sql: "SELECT id FROM players WHERE id = ?",
+    args: [playerId],
+  });
+  if (!player.rows[0]) return { ok: false, error: "Player not found." };
+
+  if (amount === null) {
+    await db.execute({
+      sql: "DELETE FROM dues WHERE session_id = ? AND player_id = ?",
+      args: [sessionId, playerId],
+    });
+    revalidatePath("/");
+    return { ok: true };
+  }
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return { ok: false, error: "Amount must be a positive whole number." };
+  }
+
+  const existing = await db.execute({
+    sql: "SELECT id FROM dues WHERE session_id = ? AND player_id = ?",
+    args: [sessionId, playerId],
+  });
+
+  if (existing.rows[0]) {
+    await db.execute({
+      sql: "UPDATE dues SET amount = ? WHERE session_id = ? AND player_id = ?",
+      args: [amount, sessionId, playerId],
+    });
+  } else {
+    await db.execute({
+      sql: "INSERT INTO dues (session_id, player_id, amount, is_paid) VALUES (?, ?, ?, 0)",
+      args: [sessionId, playerId, amount],
+    });
+  }
+
+  revalidatePath("/");
+  return { ok: true };
+}
