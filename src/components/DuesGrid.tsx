@@ -51,6 +51,24 @@ export function DuesGrid({ data, isAdmin }: Props) {
     return players.filter((p) => p.name.toLowerCase().includes(q));
   }, [players, playerFilter]);
 
+  const sessionUnpaidTotals = useMemo(() => {
+    const totals = new Map<number, number>();
+    for (const session of sessions) {
+      let sum = 0;
+      for (const player of filteredPlayers) {
+        const cell = player.cells[session.id];
+        if (cell && !cell.isPaid) sum += cell.amount;
+      }
+      totals.set(session.id, sum);
+    }
+    return totals;
+  }, [filteredPlayers, sessions]);
+
+  const grandUnpaidTotal = useMemo(
+    () => filteredPlayers.reduce((sum, player) => sum + player.unpaidTotal, 0),
+    [filteredPlayers]
+  );
+
   function sessionAllPaid(sessionId: number): boolean {
     const dues = players
       .map((p) => p.cells[sessionId])
@@ -395,6 +413,37 @@ export function DuesGrid({ data, isAdmin }: Props) {
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td className="sticky left-0 bottom-0 z-30 bg-[var(--header-bg)] px-3 py-2.5 text-left font-semibold text-[var(--ink)] border-t border-r border-[var(--border)] whitespace-nowrap">
+                Total due
+              </td>
+              {sessions.map((session) => {
+                const total = sessionUnpaidTotals.get(session.id) ?? 0;
+                return (
+                  <td
+                    key={session.id}
+                    className={`sticky bottom-0 z-20 bg-[var(--header-bg)] border-t border-[var(--border)] px-1 py-2.5 text-center font-semibold tabular-nums ${
+                      total > 0
+                        ? "text-[var(--unpaid-fg)]"
+                        : "text-[var(--muted)]"
+                    }`}
+                  >
+                    {formatRs(total)}
+                  </td>
+                );
+              })}
+              <td
+                className={`sticky bottom-0 z-20 bg-[var(--header-bg)] border-t border-l border-[var(--border)] px-3 py-2.5 text-right font-semibold tabular-nums ${
+                  grandUnpaidTotal > 0
+                    ? "text-[var(--unpaid-fg)]"
+                    : "text-[var(--muted)]"
+                }`}
+              >
+                {formatRs(grandUnpaidTotal)}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
