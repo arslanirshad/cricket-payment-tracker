@@ -7,7 +7,27 @@ import type { GridData, Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+type HomeSearchParams = {
+  player?: string | string[];
+  session?: string | string[];
+};
+
+function parsePositiveInt(value: string | string[] | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<HomeSearchParams>;
+}) {
+  const params = await searchParams;
+  const focusPlayerId = parsePositiveInt(params.player);
+  const focusSessionId = parsePositiveInt(params.session);
   const session = await getSession();
   const isAdmin = !!session;
 
@@ -32,7 +52,7 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
+    <main className="mx-auto max-w-[1400px] px-3 py-4 sm:px-6 sm:py-6">
       <Header isAdmin={isAdmin} username={session?.username} />
 
       {loadError && (
@@ -41,7 +61,12 @@ export default async function HomePage() {
         </div>
       )}
 
-      <DuesGrid data={grid} isAdmin={isAdmin} />
+      <DuesGrid
+        data={grid}
+        isAdmin={isAdmin}
+        focusPlayerId={focusPlayerId}
+        focusSessionId={focusSessionId}
+      />
 
       {isAdmin && (
         <AdminPanel activePlayers={activePlayers} allPlayers={allPlayers} />

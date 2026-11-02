@@ -38,18 +38,33 @@ export function resolveAppUrl(): string {
   return "http://localhost:3000";
 }
 
+/** Home URL that opens the grid on this player's cell for the session. */
+export function buildDueDetailsUrl(
+  appUrl: string,
+  playerId: number,
+  sessionId: number
+): string {
+  const url = new URL(appUrl);
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("player", String(playerId));
+  url.searchParams.set("session", String(sessionId));
+  return url.toString();
+}
+
 export function buildDueWhatsAppMessage(opts: {
   playerName: string;
   playDate: string;
   amount: number;
-  appUrl: string;
+  detailsUrl: string;
 }): string {
   const dateLabel = formatPlayDateForMessage(opts.playDate);
   return (
     `Hi ${opts.playerName},\n\n` +
     `New cricket dues for ${dateLabel}:\n` +
     `Amount due: ${formatRs(opts.amount)}\n\n` +
-    `View details: ${opts.appUrl}/`
+    `View details: ${opts.detailsUrl}`
   );
 }
 

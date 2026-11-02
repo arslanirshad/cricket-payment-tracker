@@ -20,13 +20,13 @@ export function TextFilter({
   inputClassName = "",
 }: Props) {
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+    <div className={`flex w-full flex-wrap items-center gap-2 sm:w-auto ${className}`}>
       {label && (
         <label className="text-sm text-[var(--muted)]" htmlFor={id}>
           {label}
         </label>
       )}
-      <div className="relative min-w-[12rem] max-w-xs">
+      <div className="relative w-full min-w-0 sm:min-w-[12rem] sm:max-w-xs">
         <input
           id={id}
           type="text"

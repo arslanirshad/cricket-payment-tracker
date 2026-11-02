@@ -8,7 +8,7 @@ type Props = {
 
 export function Header({ isAdmin, username }: Props) {
   return (
-    <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
+    <header className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3 sm:mb-6 sm:gap-3 sm:pb-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
           Cricket Dues

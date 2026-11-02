@@ -25,6 +25,13 @@ export function formatSessionHeader(playDate: string, totalAmount: number): stri
   return `${day} ${month} ${year} · ${formatRs(totalAmount)}`;
 }
 
+/** Short date for a narrow week column, e.g. "24 Oct 2026". */
+export function formatCompactSessionDate(playDate: string): string {
+  const d = parseLocalDate(playDate);
+  const month = d.toLocaleString("en-GB", { month: "short" });
+  return `${d.getDate()} ${month} ${d.getFullYear()}`;
+}
+
 /** Parse YYYY-MM-DD as local date (avoid UTC shift). */
 export function parseLocalDate(isoDate: string): Date {
   const [y, m, d] = isoDate.split("-").map(Number);

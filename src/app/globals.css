@@ -32,3 +32,18 @@ body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   min-height: 100vh;
 }
+
+@keyframes due-focus-in {
+  from {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  to {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 80%, transparent),
+      0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+}
+
+.due-focus {
+  animation: due-focus-in 280ms ease-out forwards;
+}

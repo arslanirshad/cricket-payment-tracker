@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   markSessionAllPaid,
   markSessionAllUnpaid,
@@ -11,12 +11,30 @@ import {
 import { setCellAmount, toggleDuePaid } from "@/app/actions/dues";
 import { TextFilter } from "@/components/TextFilter";
 import type { DueCell, GridData } from "@/lib/types";
-import { formatRs, formatSessionHeader } from "@/lib/utils";
+import { formatCompactSessionDate, formatRs, formatSessionHeader } from "@/lib/utils";
 
 type Props = {
   data: GridData;
   isAdmin: boolean;
+  focusPlayerId?: number | null;
+  focusSessionId?: number | null;
 };
+
+const HIGHLIGHT_MS = 4000;
+
+function cellMarker(playerId: number, sessionId: number) {
+  return {
+    "data-player-id": playerId,
+    "data-session-id": sessionId,
+  };
+}
+
+const amountCol = "w-[5.75rem] min-w-[5.75rem] max-w-[5.75rem]";
+const nameCol = "max-w-[42vw] md:max-w-none";
+
+function focusClass(on: boolean): string {
+  return on ? " due-focus" : "";
+}
 
 type EditingCell = {
   playerId: number;
@@ -37,13 +55,85 @@ function PencilIcon({ className }: { className?: string }) {
   );
 }
 
-export function DuesGrid({ data, isAdmin }: Props) {
+export function DuesGrid({
+  data,
+  isAdmin,
+  focusPlayerId = null,
+  focusSessionId = null,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [playerFilter, setPlayerFilter] = useState("");
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [draft, setDraft] = useState("");
+  const [highlightOn, setHighlightOn] = useState(
+    () => focusPlayerId != null && focusSessionId != null
+  );
   const skipBlurSaveRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const { players, sessions } = data;
+
+  useEffect(() => {
+    if (focusPlayerId == null || focusSessionId == null) return;
+    setHighlightOn(true);
+    const timer = window.setTimeout(() => setHighlightOn(false), HIGHLIGHT_MS);
+
+    const frame = requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      if (!container) return;
+      const cell = container.querySelector<HTMLElement>(
+        `td[data-player-id="${focusPlayerId}"][data-session-id="${focusSessionId}"]`
+      );
+      if (!cell) return;
+
+      container.scrollIntoView({ block: "nearest", inline: "nearest" });
+
+      const cRect = container.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      const nameRect = container.querySelector("thead th")?.getBoundingClientRect();
+      const headerRect = container
+        .querySelector("thead th")
+        ?.getBoundingClientRect();
+      const footerRect = container
+        .querySelector("tfoot td")
+        ?.getBoundingClientRect();
+
+      const scrollportLeft = cRect.left + container.clientLeft;
+      const scrollportTop = cRect.top + container.clientTop;
+      const scrollportRight = scrollportLeft + container.clientWidth;
+      const scrollportBottom = scrollportTop + container.clientHeight;
+
+      const footerHeight = footerRect?.height ?? 0;
+      const visibleLeft = Math.max(nameRect?.right ?? scrollportLeft, scrollportLeft);
+      const visibleRight = scrollportRight;
+      const visibleTop = Math.max(headerRect?.bottom ?? scrollportTop, scrollportTop);
+      const footerTop =
+        footerRect && footerRect.top < scrollportBottom
+          ? footerRect.top
+          : scrollportBottom - footerHeight;
+      const visibleBottom = Math.min(footerTop, scrollportBottom);
+      const visibleWidth = Math.max(visibleRight - visibleLeft, 1);
+      const visibleHeight = Math.max(visibleBottom - visibleTop, 1);
+
+      container.scrollBy({
+        left: cellRect.left + cellRect.width / 2 - (visibleLeft + visibleWidth / 2),
+        top: cellRect.top + cellRect.height / 2 - (visibleTop + visibleHeight / 2),
+        behavior: "smooth",
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [focusPlayerId, focusSessionId]);
+
+  function isFocusedCell(playerId: number, sessionId: number): boolean {
+    return (
+      highlightOn &&
+      playerId === focusPlayerId &&
+      sessionId === focusSessionId
+    );
+  }
 
   const filteredPlayers = useMemo(() => {
     const q = playerFilter.trim().toLowerCase();
@@ -182,7 +272,8 @@ export function DuesGrid({ data, isAdmin }: Props) {
       return (
         <td
           key={sessionId}
-          className="border-b border-[var(--border)] px-1 py-1 text-center"
+          {...cellMarker(playerId, sessionId)}
+          className={`border-b border-[var(--border)] px-1 py-1 text-center ${amountCol}`}
         >
           <input
             type="number"
@@ -203,7 +294,7 @@ export function DuesGrid({ data, isAdmin }: Props) {
             }}
             onBlur={() => saveEdit()}
             aria-label="Edit amount"
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1.5 text-center text-sm font-medium tabular-nums text-[var(--ink)] outline-none focus:border-[var(--accent)]"
+            className={`w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-1 py-1 text-center text-sm font-medium tabular-nums text-[var(--ink)] outline-none focus:border-[var(--accent)]${focusClass(isFocusedCell(playerId, sessionId))}`}
           />
         </td>
       );
@@ -214,7 +305,8 @@ export function DuesGrid({ data, isAdmin }: Props) {
     return (
       <td
         key={sessionId}
-        className="group/cell relative border-b border-[var(--border)] px-1 py-1 text-center"
+        {...cellMarker(playerId, sessionId)}
+        className={`group/cell relative z-0 border-b border-[var(--border)] px-1 py-1 text-center ${amountCol}`}
       >
         <button
           type="button"
@@ -225,7 +317,7 @@ export function DuesGrid({ data, isAdmin }: Props) {
           }}
           title="Edit amount"
           aria-label="Edit amount"
-          className="absolute top-0.5 right-0.5 z-10 flex h-4 w-4 items-center justify-center rounded bg-[var(--surface)]/90 text-[var(--muted)] opacity-0 shadow-sm transition hover:text-[var(--accent)] group-hover/cell:opacity-100 focus-visible:opacity-100"
+          className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded bg-[var(--surface)]/90 text-[var(--muted)] opacity-100 shadow-sm transition hover:text-[var(--accent)] focus-visible:opacity-100 md:opacity-0 md:group-hover/cell:opacity-100"
         >
           <PencilIcon className="h-3 w-3" />
         </button>
@@ -236,16 +328,18 @@ export function DuesGrid({ data, isAdmin }: Props) {
             disabled={pending}
             onClick={() => onToggle(cell.dueId)}
             title={paid ? "Mark unpaid" : "Mark paid"}
-            className={`w-full rounded-md px-2 py-1.5 font-medium tabular-nums transition disabled:opacity-50 ${
+            className={`w-full rounded-md py-1 pl-1 pr-4 text-center text-sm font-medium tabular-nums transition disabled:opacity-50 ${
               paid
                 ? "bg-[var(--paid-bg)] text-[var(--paid-fg)] hover:brightness-95"
                 : "bg-[var(--unpaid-bg)] text-[var(--unpaid-fg)] hover:brightness-95"
-            }`}
+            }${focusClass(isFocusedCell(playerId, sessionId))}`}
           >
             {formatRs(cell.amount)}
           </button>
         ) : (
-          <span className="inline-block w-full rounded-md px-2 py-1.5 text-[var(--muted)]">
+          <span
+            className={`inline-block w-full rounded-md px-1 py-1 text-[var(--muted)]${focusClass(isFocusedCell(playerId, sessionId))}`}
+          >
             —
           </span>
         )}
@@ -273,11 +367,16 @@ export function DuesGrid({ data, isAdmin }: Props) {
         />
       </div>
 
-      <div className="overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm max-h-[calc(100vh-12rem)]">
-        <table className="min-w-full border-collapse text-sm">
+      <div
+        ref={scrollRef}
+        className="overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm max-h-[calc(100vh-12rem)]"
+      >
+        <table className="w-max border-collapse text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 top-0 z-30 bg-[var(--header-bg)] px-3 py-3 text-left font-semibold text-[var(--ink)] border-b border-r border-[var(--border)] min-w-[9rem]">
+              <th
+                className={`sticky left-0 top-0 z-30 bg-[var(--header-bg)] px-2 py-2 text-left font-semibold text-[var(--ink)] border-b border-r border-[var(--border)] md:px-2.5 ${nameCol}`}
+              >
                 Player
               </th>
               {sessions.map((session) => {
@@ -286,14 +385,21 @@ export function DuesGrid({ data, isAdmin }: Props) {
                 return (
                   <th
                     key={session.id}
-                    className={`sticky top-0 z-20 bg-[var(--header-bg)] px-2 py-2 text-center font-medium text-[var(--ink)] border-b border-[var(--border)] min-w-[7.5rem] whitespace-nowrap ${
-                      hidden ? "opacity-60" : ""
-                    }`}
+                    className={`sticky top-0 z-20 bg-[var(--header-bg)] px-1 py-1.5 text-center font-medium text-[var(--ink)] border-b border-[var(--border)] ${amountCol}`}
                   >
-                    <div>{formatSessionHeader(session.play_date, session.total_amount)}</div>
+                    <div className={hidden ? "opacity-60" : undefined}>
+                    <div className="text-xs leading-tight">
+                      {formatCompactSessionDate(session.play_date)}
+                    </div>
+                    <div className="text-[10px] font-normal leading-tight text-[var(--muted)]">
+                      {formatRs(session.total_amount)}
+                    </div>
                     {hidden && (
-                      <div className="text-[10px] font-normal uppercase tracking-wide text-[var(--muted)]">
-                        Hidden from visitors
+                      <div
+                        title="Hidden from visitors"
+                        className="text-[10px] font-normal uppercase tracking-wide text-[var(--muted)]"
+                      >
+                        Hidden
                       </div>
                     )}
                     {isAdmin && (
@@ -301,55 +407,62 @@ export function DuesGrid({ data, isAdmin }: Props) {
                         <button
                           type="button"
                           disabled={pending}
+                          title={allPaid ? "Mark all unpaid" : "Mark all paid"}
                           onClick={() =>
                             allPaid
                               ? onMarkAllUnpaid(session.id)
                               : onMarkAllPaid(session.id)
                           }
-                          className="text-[10px] font-normal text-[var(--accent)] hover:underline disabled:opacity-50"
+                          className="whitespace-nowrap text-[10px] font-normal leading-tight text-[var(--accent)] hover:underline disabled:opacity-50"
                         >
-                          {allPaid ? "Mark all unpaid" : "Mark all paid"}
+                          {allPaid ? "All unpaid" : "All paid"}
                         </button>
                         {hidden ? (
                           <button
                             type="button"
                             disabled={pending}
+                            title="Show column"
                             onClick={() => onUnhideSession(session.id)}
-                            className="text-[10px] font-normal text-[var(--accent)] hover:underline disabled:opacity-50"
+                            className="whitespace-nowrap text-[10px] font-normal leading-tight text-[var(--accent)] hover:underline disabled:opacity-50"
                           >
-                            Show column
+                            Show
                           </button>
                         ) : (
                           allPaid && (
                             <button
                               type="button"
                               disabled={pending}
+                              title="Hide from visitors"
                               onClick={() => onHideSession(session.id)}
-                              className="text-[10px] font-normal text-[var(--accent)] hover:underline disabled:opacity-50"
+                              className="whitespace-nowrap text-[10px] font-normal leading-tight text-[var(--accent)] hover:underline disabled:opacity-50"
                             >
-                              Hide from visitors
+                              Hide
                             </button>
                           )
                         )}
                         <button
                           type="button"
                           disabled={pending}
+                          title="Delete column"
                           onClick={() =>
                             onDeleteSession(
                               session.id,
                               formatSessionHeader(session.play_date, session.total_amount)
                             )
                           }
-                          className="text-[10px] font-normal text-[var(--unpaid-fg)] hover:underline disabled:opacity-50"
+                          className="whitespace-nowrap text-[10px] font-normal leading-tight text-[var(--unpaid-fg)] hover:underline disabled:opacity-50"
                         >
-                          Delete column
+                          Delete
                         </button>
                       </div>
                     )}
+                    </div>
                   </th>
                 );
               })}
-              <th className="sticky top-0 z-20 bg-[var(--header-bg)] px-3 py-3 text-right font-semibold text-[var(--ink)] border-b border-l border-[var(--border)] min-w-[6.5rem] whitespace-nowrap">
+              <th
+                className={`sticky top-0 z-20 bg-[var(--header-bg)] border-b border-l border-[var(--border)] px-1 py-1.5 text-right text-xs font-semibold text-[var(--ink)] ${amountCol}`}
+              >
                 Unpaid
               </th>
             </tr>
@@ -357,10 +470,13 @@ export function DuesGrid({ data, isAdmin }: Props) {
           <tbody>
             {filteredPlayers.map((player) => (
               <tr key={player.id} className="group hover:bg-[var(--row-hover)]">
-                <td className="sticky left-0 z-10 bg-[var(--surface)] group-hover:bg-[var(--row-hover)] px-3 py-2 font-medium text-[var(--ink)] border-b border-r border-[var(--border)] whitespace-nowrap">
-                  {player.name}
+                <td
+                  title={player.name}
+                  className={`sticky left-0 z-10 bg-[var(--surface)] group-hover:bg-[var(--row-hover)] px-2 py-1.5 font-medium text-[var(--ink)] border-b border-r border-[var(--border)] md:px-2.5 ${nameCol}`}
+                >
+                  <span className="block max-w-full truncate">{player.name}</span>
                   {player.active !== 1 && (
-                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                    <span className="text-[10px] uppercase tracking-wide text-[var(--muted)]">
                       inactive
                     </span>
                   )}
@@ -376,7 +492,8 @@ export function DuesGrid({ data, isAdmin }: Props) {
                     return (
                       <td
                         key={session.id}
-                        className="border-b border-[var(--border)] px-2 py-2 text-center text-[var(--muted)]"
+                        {...cellMarker(player.id, session.id)}
+                        className={`border-b border-[var(--border)] px-1 py-1 text-center text-[var(--muted)] ${amountCol}${focusClass(isFocusedCell(player.id, session.id))}`}
                       >
                         —
                       </td>
@@ -387,14 +504,15 @@ export function DuesGrid({ data, isAdmin }: Props) {
                   return (
                     <td
                       key={session.id}
-                      className="border-b border-[var(--border)] px-1 py-1 text-center"
+                      {...cellMarker(player.id, session.id)}
+                      className={`border-b border-[var(--border)] px-1 py-1 text-center ${amountCol}`}
                     >
                       <span
-                        className={`inline-block w-full rounded-md px-2 py-1.5 font-medium tabular-nums ${
+                        className={`inline-block w-full rounded-md px-1 py-1 text-center text-sm font-medium tabular-nums ${
                           paid
                             ? "bg-[var(--paid-bg)] text-[var(--paid-fg)]"
                             : "bg-[var(--unpaid-bg)] text-[var(--unpaid-fg)]"
-                        }`}
+                        }${focusClass(isFocusedCell(player.id, session.id))}`}
                       >
                         {formatRs(cell.amount)}
                       </span>
@@ -402,7 +520,7 @@ export function DuesGrid({ data, isAdmin }: Props) {
                   );
                 })}
                 <td
-                  className={`border-b border-l border-[var(--border)] px-3 py-2 text-right font-semibold tabular-nums ${
+                  className={`border-b border-l border-[var(--border)] px-1 py-1.5 text-right text-sm font-semibold tabular-nums ${amountCol} ${
                     player.unpaidTotal > 0
                       ? "text-[var(--unpaid-fg)]"
                       : "text-[var(--muted)]"
@@ -415,7 +533,9 @@ export function DuesGrid({ data, isAdmin }: Props) {
           </tbody>
           <tfoot>
             <tr>
-              <td className="sticky left-0 bottom-0 z-30 bg-[var(--header-bg)] px-3 py-2.5 text-left font-semibold text-[var(--ink)] border-t border-r border-[var(--border)] whitespace-nowrap">
+              <td
+                className={`sticky left-0 bottom-0 z-30 bg-[var(--header-bg)] px-2 py-2 text-left font-semibold text-[var(--ink)] border-t border-r border-[var(--border)] md:px-2.5 ${nameCol}`}
+              >
                 Total due
               </td>
               {sessions.map((session) => {
@@ -423,7 +543,7 @@ export function DuesGrid({ data, isAdmin }: Props) {
                 return (
                   <td
                     key={session.id}
-                    className={`sticky bottom-0 z-20 bg-[var(--header-bg)] border-t border-[var(--border)] px-1 py-2.5 text-center font-semibold tabular-nums ${
+                    className={`sticky bottom-0 z-20 bg-[var(--header-bg)] border-t border-[var(--border)] px-1 py-2 text-center text-xs font-semibold tabular-nums ${amountCol} ${
                       total > 0
                         ? "text-[var(--unpaid-fg)]"
                         : "text-[var(--muted)]"
@@ -434,7 +554,7 @@ export function DuesGrid({ data, isAdmin }: Props) {
                 );
               })}
               <td
-                className={`sticky bottom-0 z-20 bg-[var(--header-bg)] border-t border-l border-[var(--border)] px-3 py-2.5 text-right font-semibold tabular-nums ${
+                className={`sticky bottom-0 z-20 bg-[var(--header-bg)] border-t border-l border-[var(--border)] px-1 py-2 text-right text-xs font-semibold tabular-nums ${amountCol} ${
                   grandUnpaidTotal > 0
                     ? "text-[var(--unpaid-fg)]"
                     : "text-[var(--muted)]"

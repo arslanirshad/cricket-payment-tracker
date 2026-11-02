@@ -6,6 +6,7 @@ import { getDb } from "@/lib/db";
 import type { WhatsAppNotify } from "@/lib/types";
 import { splitAmount } from "@/lib/utils";
 import {
+  buildDueDetailsUrl,
   buildDueWhatsAppMessage,
   buildWhatsAppUrl,
   phoneToWhatsAppDigits,
@@ -86,14 +87,15 @@ export async function createSession(
     const digits = phoneToWhatsAppDigits(phoneRaw);
     if (!digits) continue;
     const name = String(row.name);
+    const playerId = Number(row.id);
     const text = buildDueWhatsAppMessage({
       playerName: name,
       playDate,
       amount: share,
-      appUrl,
+      detailsUrl: buildDueDetailsUrl(appUrl, playerId, sessionId),
     });
     notifies.push({
-      playerId: Number(row.id),
+      playerId,
       name,
       phoneDigits: digits,
       amount: share,
