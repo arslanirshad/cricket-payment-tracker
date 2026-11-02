@@ -317,7 +317,7 @@ export function DuesGrid({
           }}
           title="Edit amount"
           aria-label="Edit amount"
-          className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded bg-[var(--surface)]/90 text-[var(--muted)] opacity-100 shadow-sm transition hover:text-[var(--accent)] focus-visible:opacity-100 md:opacity-0 md:group-hover/cell:opacity-100"
+          className="absolute top-0.5 right-0.5 z-10 flex h-3.5 w-3.5 items-center justify-center rounded bg-[var(--surface)]/90 text-[var(--muted)] opacity-100 shadow-sm transition hover:text-[var(--accent)] focus-visible:opacity-100 md:opacity-0 md:group-hover/cell:opacity-100"
         >
           <PencilIcon className="h-3 w-3" />
         </button>
