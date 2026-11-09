@@ -36,6 +36,51 @@ function focusClass(on: boolean): string {
   return on ? " due-focus" : "";
 }
 
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Scroll a grid cell into the sticky-aware viewport. Instant assignment avoids
+ * iOS Safari dropping horizontal scroll when smooth scrollBy would clamp on Y. */
+function scrollCellIntoFocus(container: HTMLElement, cell: HTMLElement) {
+  container.scrollIntoView({ block: "nearest", inline: "nearest" });
+
+  const cRect = container.getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+  const cornerTh = container.querySelector<HTMLElement>("thead th");
+  const footerTd = container.querySelector<HTMLElement>("tfoot td");
+  const nameRect = cornerTh?.getBoundingClientRect();
+  const footerRect = footerTd?.getBoundingClientRect();
+
+  const scrollportLeft = cRect.left + container.clientLeft;
+  const scrollportTop = cRect.top + container.clientTop;
+  const scrollportRight = scrollportLeft + container.clientWidth;
+  const scrollportBottom = scrollportTop + container.clientHeight;
+
+  const footerHeight = footerRect?.height ?? 0;
+  const visibleLeft = Math.max(nameRect?.right ?? scrollportLeft, scrollportLeft);
+  const visibleRight = scrollportRight;
+  const visibleTop = Math.max(nameRect?.bottom ?? scrollportTop, scrollportTop);
+  const stickyFooterTop =
+    footerRect && footerRect.top < scrollportBottom
+      ? footerRect.top
+      : scrollportBottom - footerHeight;
+  const visibleBottom = Math.min(stickyFooterTop, scrollportBottom);
+  const visibleWidth = Math.max(visibleRight - visibleLeft, 1);
+  const visibleHeight = Math.max(visibleBottom - visibleTop, 1);
+
+  const deltaLeft =
+    cellRect.left + cellRect.width / 2 - (visibleLeft + visibleWidth / 2);
+  const deltaTop =
+    cellRect.top + cellRect.height / 2 - (visibleTop + visibleHeight / 2);
+
+  const maxLeft = Math.max(container.scrollWidth - container.clientWidth, 0);
+  const maxTop = Math.max(container.scrollHeight - container.clientHeight, 0);
+
+  container.scrollLeft = clamp(container.scrollLeft + deltaLeft, 0, maxLeft);
+  container.scrollTop = clamp(container.scrollTop + deltaTop, 0, maxTop);
+}
+
 type EditingCell = {
   playerId: number;
   sessionId: number;
@@ -75,55 +120,45 @@ export function DuesGrid({
   useEffect(() => {
     if (focusPlayerId == null || focusSessionId == null) return;
     setHighlightOn(true);
-    const timer = window.setTimeout(() => setHighlightOn(false), HIGHLIGHT_MS);
+    const timers: number[] = [];
+    timers.push(window.setTimeout(() => setHighlightOn(false), HIGHLIGHT_MS));
 
-    const frame = requestAnimationFrame(() => {
+    let cancelled = false;
+    let attempts = 0;
+    let frame2 = 0;
+
+    const tryScroll = () => {
+      if (cancelled) return;
       const container = scrollRef.current;
       if (!container) return;
       const cell = container.querySelector<HTMLElement>(
         `td[data-player-id="${focusPlayerId}"][data-session-id="${focusSessionId}"]`
       );
-      if (!cell) return;
+      if (!cell) {
+        if (attempts++ < 12) {
+          timers.push(window.setTimeout(tryScroll, 50));
+        }
+        return;
+      }
 
-      container.scrollIntoView({ block: "nearest", inline: "nearest" });
+      scrollCellIntoFocus(container, cell);
+      // Second pass after sticky headers / iOS chrome settle.
+      timers.push(
+        window.setTimeout(() => {
+          if (!cancelled) scrollCellIntoFocus(container, cell);
+        }, 120)
+      );
+    };
 
-      const cRect = container.getBoundingClientRect();
-      const cellRect = cell.getBoundingClientRect();
-      const nameRect = container.querySelector("thead th")?.getBoundingClientRect();
-      const headerRect = container
-        .querySelector("thead th")
-        ?.getBoundingClientRect();
-      const footerRect = container
-        .querySelector("tfoot td")
-        ?.getBoundingClientRect();
-
-      const scrollportLeft = cRect.left + container.clientLeft;
-      const scrollportTop = cRect.top + container.clientTop;
-      const scrollportRight = scrollportLeft + container.clientWidth;
-      const scrollportBottom = scrollportTop + container.clientHeight;
-
-      const footerHeight = footerRect?.height ?? 0;
-      const visibleLeft = Math.max(nameRect?.right ?? scrollportLeft, scrollportLeft);
-      const visibleRight = scrollportRight;
-      const visibleTop = Math.max(headerRect?.bottom ?? scrollportTop, scrollportTop);
-      const footerTop =
-        footerRect && footerRect.top < scrollportBottom
-          ? footerRect.top
-          : scrollportBottom - footerHeight;
-      const visibleBottom = Math.min(footerTop, scrollportBottom);
-      const visibleWidth = Math.max(visibleRight - visibleLeft, 1);
-      const visibleHeight = Math.max(visibleBottom - visibleTop, 1);
-
-      container.scrollBy({
-        left: cellRect.left + cellRect.width / 2 - (visibleLeft + visibleWidth / 2),
-        top: cellRect.top + cellRect.height / 2 - (visibleTop + visibleHeight / 2),
-        behavior: "smooth",
-      });
+    const frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(tryScroll);
     });
 
     return () => {
-      cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
+      cancelled = true;
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frame2);
+      for (const id of timers) window.clearTimeout(id);
     };
   }, [focusPlayerId, focusSessionId]);
 
